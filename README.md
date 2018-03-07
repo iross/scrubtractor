@@ -1,6 +1,6 @@
 Helper classes for document or page level 'stuff' for GeoDeepDive.
 
-# Philsophy
+# Philosophy
 The idea is that these things would be usable for basic document processing,
 especially  in a bundled HTC job. Include these scripts and some OCR
 executables and have an all-in-one way of:

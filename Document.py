@@ -202,7 +202,10 @@ class Document(object):
         pass
 
 
-    def remove_headers(self, footer_mode):
+    # TODO: why do I need to pass in found_headers and found_pagenumbers
+    ## they're accessible (but slightly different) in self.repeated
+    ## TODO: actually the Page class will be aware of what potential page number it is..
+    def cleanup_page(self, page, mode, found_pagenumber):
         """
         TODO: Docstring for remove_headers.
 
@@ -213,44 +216,82 @@ class Document(object):
         """
 
         LINES = 8
-        removed = list()
+
+        valid_modes = ["header", "footer", "full_page"]
+        if mode not in valid_modes:
+            print "Invalid scan mode supplied! Choose one of (%s)" % (valid_modes)
+
+        if mode == "header":
+            lines = xrange(LINES)
+        elif mode == "footer":
+            lines = xrange(len(page) - 1 - LINES, len(page))
+        elif mode == "full_page":
+            lines = xrange(1, len(page)-1)
+
+        # remove pagenumbers based on string matching
+        ignore_lines = []
+        for i in lines:
+            if mode == "full_page": # only check for similarity if the string is isolated
+                if page[i-1] != "" or page[i+1] != "":
+                    continue
+
+            # loop over known headers, remove any any similar strings
+            for rep in self.repeated_phrases:
+                rep = str(rep)
+                seq = SequenceMatcher(None, rep, page[i])
+                if seq.ratio() > 0.8:
+                    ignore_lines.append(i)
+            # remove any instance of the expected page number
+            page[i] = page[i].replace(str(found_pagenumber), "")
+
+        cleaned_page = [val for i, val in enumerate(page) if i not in ignore_lines]
+        non_empty_lines = [i for i, val in enumerate(cleaned_page) if (val!="" and val!="\n" and val!=' ')]
+        if non_empty_lines == []:
+            cleaned_page = ['']
+        else:
+            cleaned_page = cleaned_page[non_empty_lines[0]:non_empty_lines[-1]+1]
+
+        return cleaned_page
+
+    def remove_headers(self, mode):
+        """
+        TODO: Docstring for remove_headers.
+
+        Args:
+            footer_mode (TODO): TODO
+
+        Returns: TODO
+        """
+
         cleaned_pages = list()
-
-        # TODO: a better 'pop' for my data structure -- should automatically remove newlines if they become 'head' or 'tail' after some cleanup
-        # TODO: What I really want is to check the first X lines, remove known issues, and re-check to make sure I didn't miss anything, because
-        #           sometimes page numbers are twenty+ blank lines "underneath" the header for some reason..
-        # TODO: also it should try to remove 'end of a line but it\n\ncontinues on after' gaps
-
-        for page, headerset, pageno in zip(self.page_list, self.repeated, self.found_pagenumbers):
-            page = [i.strip() for i in page]
-            for header in sorted(headerset, key = lambda tup: -tup[1]): # Make sure we pop from the back so indexes don't become invalid
-                lineindex = header[1]
-                print "Removing line %s" % lineindex
-                try:
-                    page[lineindex] = "\n"
-                except IndexError:
-                    import pdb; pdb.set_trace()
-            if not footer_mode:
-                for i in range(LINES):
-                    page[i] = page[i].replace(str(pageno), "")
-            elif footer_mode:
-                print "Checking lines %s-%s for %s" % (len(page) - 1 - LINES, len(page) - 1, pageno)
-                for i in range(len(page) - 1 - LINES, len(page) - 1):
-                    page[i] = page[i].replace(str(pageno), "")
-#            if str(pageno) in page:
-#                page.pop(page.index(str(pageno)))
-            # clean up trailing whitespace again, since we might have cut some out.
-
-            # TODO: Hmm, this cleanup can break the line indexing for things stored in self.repeated...
-#            non_empty = [i for i, val in enumerate(page) if val!="" and val!="\n"]
-#            if non_empty == []:
-#                cleaned_pages.append([''])
-#            else:
-#                cleaned_pages.append(page[non_empty[0]:non_empty[-1]+1])
+        for page, pageno in zip(self.page_list, self.found_pagenumbers):
+            page = self.cleanup_page(page, mode, pageno)
             cleaned_pages.append(page)
-
         self.page_list = cleaned_pages
         return 0
+
+#    def mid_page_cleanup_page(self, page):
+#        """
+#        TODO: Docstring for mid_page_cleanup.
+#        Returns: TODO
+#
+#        """
+#        repeated_dealies = set()
+#        repeated_dealies = repeated_dealies.union(self.repeated_phrases)
+#        repeated_dealies = repeated_dealies.union(set(self.expected_pagenumbers))
+#
+#        cleaned_page = list()
+#        ignore_lines = list()
+#        for line in range(1, len(page)-1):
+#            if page[line-1] != "" or page[line+1] != "": # only check for similarity if the string is isolated
+#                continue
+#            for rep in repeated_dealies:
+#                rep = str(rep)
+#                seq = SequenceMatcher(None, rep, page[line])
+#                if seq.ratio() > 0.8:
+#                    ignore_lines.append(line)
+#        cleaned_page = [val for i, val in enumerate(page) if i not in ignore_lines]
+#        return cleaned_page
 
     def mid_page_cleanup(self):
         """
@@ -266,22 +307,31 @@ class Document(object):
         ## if pattern is "\n" "<known pattern>" "\n", do some cleanup
         cleaned_page = list()
         for j, page in enumerate(self.page_list):
-            ignore_lines = list()
-            for line in range(1, len(page)-1):
-                if page[line-1] != "" or page[line+1] != "": # only check for similarity if the string is isolated
-                    continue
-                if "alphamed" in page[line]:
-                    for rep in repeated_dealies:
-                        rep = str(rep)
-                        seq = SequenceMatcher(None, rep, page[line])
-                        if seq.ratio() > 0.8:
-                            ignore_lines.append(line)
-            cleaned_page = [val for i, val in enumerate(page) if i not in ignore_lines]
-            if ignore_lines != []:
-                print j
+            cleaned_page = self.cleanup_page(page, mode="full_page", found_pagenumber = self.expected_pagenumbers[j])
+            self.page_list[j] = cleaned_page
 
-            # TODO: do the actual removal
-        pass
+    def remove_empties_page(self, page):
+        """
+        TODO: Docstring for remove_empties_page.
+
+        Args:
+            page (TODO): TODO
+
+        Returns: TODO
+
+        """
+        temp = []
+        ignore_lines = []
+        for i in range(len(page)-1):
+            if i in ignore_lines:
+                continue
+            if i+2 < len(page): # look forward -- if the next line looks like it's breaking a sentence, skip it on next iteration
+                if page[i] != '' and page[i+1] == '' and page[i+2] != '' and not page[i].endswith('.') and page[i+2][0].islower():
+                    ignore_lines.append(i+1)
+            if not (page[i] == '' and page[i+1] == ''): # eliminate chains of ''
+                temp.append(page[i])
+        temp.append(page[-1])
+        return temp
 
     def remove_empties(self):
         """
@@ -290,19 +340,7 @@ class Document(object):
 
         """
         for j, page in enumerate(self.page_list):
-            temp = []
-            ignore_lines = []
-            for i in range(len(page)-1):
-                if i in ignore_lines:
-                    continue
-                if i+2 < len(page): # look forward -- if the next line looks like it's breaking a sentence, skip it on next iteration
-                    if page[i] != '' and page[i+1] == '' and page[i+2] != '' and not page[i].endswith('.') and page[i+2][0].islower():
-                        ignore_lines.append(i+1)
-                if not (page[i] == '' and page[i+1] == ''): # eliminite chains of ''
-                    temp.append(page[i])
-
-            temp.append(page[-1])
-            self.page_list[j] = temp
+            self.page_list[j] = self.remove_empties_page(page)
 
     def find_sections(self):
         """
@@ -315,15 +353,14 @@ class Document(object):
 
 def main():
     document = Document(page_files = glob.glob("%s/output/TASK*/out/*.clean.txt" % sys.argv[1]))
-    import pdb; pdb.set_trace()
 
     # cleanup headers/footers
     document.find_headers(footer_mode = True)
     document.find_headers(footer_mode = False)
-    document.remove_headers(footer_mode = True)
-#    document.remove_headers(footer_mode = False)
-#    document.predict_pagenumbers() # requires found_pagenumbers, so should be after the find_headers calls
-#    document.mid_page_cleanup() # keys in on blank lines, so needs to be _before_ remove_empties
+    document.predict_pagenumbers() # requires found_pagenumbers, so should be after the find_headers calls
+    document.remove_headers(mode = "footer")
+    document.remove_headers(mode = "header")
+    document.mid_page_cleanup() # keys in on blank lines, so needs to be _before_ remove_empties
     document.remove_empties()
 
     for i, filename in enumerate(document.page_files):
@@ -331,6 +368,7 @@ def main():
         # TODO and clean up \n\n\n\n\n type stuff..
         new_filename = filename.replace("clean.txt", "moreclean.txt")
         with open(new_filename, "w") as fout:
+            document.page_list[i][-1] += "\n"
             fout.write("\n".join(document.page_list[i]))
 
 

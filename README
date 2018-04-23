@@ -1,0 +1,9 @@
+```
+docker stop scrub; docker build --rm=true -t scrubtractor .; docker run --rm --name scrub -dt scrubtractor; docker exec -it scrub /bin/bash
+
+
+# inside container
+
+python3 Document.py
+```
+

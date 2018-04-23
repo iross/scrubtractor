@@ -16,6 +16,7 @@ Should have methods to:
 """
 from difflib import SequenceMatcher
 import re
+import codecs
 
 class Page(object):
 
@@ -32,7 +33,7 @@ class Page(object):
         self.filepath = {} # hocr, txt, png, pdf
         self.filepath["txt"] = filepath
 
-        with open(self.filepath["txt"]) as fin:
+        with codecs.open(self.filepath["txt"], 'r', 'utf-8') as fin:
             clean_page = []
             temp_page = fin.read().split("\n")
             non_empty_lines = [i for i, val in enumerate(temp_page) if (val!="" and val!="\n")]
@@ -119,14 +120,13 @@ class Page(object):
 
         valid_modes = ["header", "footer", "full_page"]
         if mode not in valid_modes:
-            print "Invalid scan mode supplied! Choose one of (%s)" % (valid_modes)
-
+            print("Invalid scan mode supplied! Choose one of (%s)" % (valid_modes))
         if mode == "header":
-            lines = xrange(LINES)
+            lines = range(LINES)
         elif mode == "footer":
-            lines = xrange(len(self.page) - 1 - LINES, len(self.page))
+            lines = range(len(self.page) - 1 - LINES, len(self.page))
         elif mode == "full_page":
-            lines = xrange(1, len(self.page)-1)
+            lines = range(1, len(self.page)-1)
 
         # remove pagenumbers based on string matching
         ignore_lines = []
@@ -145,7 +145,7 @@ class Page(object):
             self.page[i] = self.page[i].replace(str(self.expected_page_no), "")
 
         cleaned_page = [val for i, val in enumerate(self.page) if i not in ignore_lines]
-        non_empty_lines = [i for i, val in enumerate(cleaned_page) if (val!="" and val!="\n" and val!=' ')]
+        non_empty_lines = [i for i, val in enumerate(cleaned_page) if (re.match(r"^\s?$", val) is None)]
         if non_empty_lines == []:
             cleaned_page = ['']
         else:

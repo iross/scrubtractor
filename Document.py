@@ -16,7 +16,24 @@ from difflib import SequenceMatcher
 import glob
 import re
 import sys
+import shutil
+import os
+import datetime
+import subprocess
+import codecs
 from Page import Page
+
+def call(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=300):
+    proc = subprocess.Popen(cmd, stdout=stdout, stderr=stderr, shell=True, preexec_fn=os.setsid)
+    try:
+        outs, errs = proc.communicate(timeout=timeout)
+        print("OK", str(outs), str(errs), "finished at %s" % datetime.datetime.now())
+        return 0, outs, errs
+    except subprocess.TimeoutExpired:
+        print("Process timed out at %s! cmd:" % datetime.datetime.now())
+        print("\t%s" % cmd)
+        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        return 1, None, None
 
 class Document(object):
 
@@ -25,18 +42,37 @@ class Document(object):
     def __init__(self, *args, **kwargs):
         for key, val in kwargs.items():
             setattr(self, key, val)
-        self.page_files = sorted(self.page_files, key=lambda s: [int(t) if t.isdigit() else t.lower() for t in re.split('(\d+)', s)])
 
-        self.repeated = list()
-        self.found_pagenumbers = list()
-        for i in range(len(self.page_files)):
-            self.repeated.append(set())
-            self.found_pagenumbers.append(None)
+        if hasattr(self, 'pdf_path') and self.pdf_path is not None:
+            code, outs, errs = call("gs -q -dNODISPLAY -c \"(%s) (r) file runpdfbegin pdfpagecount = quit\"" % self.pdf_path)
+            try:
+                self.number_of_pages = int(outs)
+            except ValueError as e:
+                print("ERROR\t Could not get number of pages. Possible document is not a PDF!")
+
+        if hasattr(self, "page_files"):
+            self.prep_pagefiles()
+        else:
+            self.page_files = []
+
         self.repeated_phrases = set()
 
+        shutil.rmtree('ocr_tmp', True)
+        try:
+            os.mkdir('ocr_tmp')
+        except OSError as e:
+            print("ERROR\tCreate ocr_tmp folder")
+            raise e
 
+
+    def prep_pagefiles(self):
+        self.page_files = sorted(self.page_files, key=lambda s: [int(t) if t.isdigit() else t.lower() for t in re.split('(\d+)', s)])
+        self.repeated = list()
+        self.found_pagenumbers = list()
         self.page_list = []
         for i, page_filepath in enumerate(self.page_files):
+            self.repeated.append(set())
+            self.found_pagenumbers.append(None)
             self.page_list.append(Page(page_filepath, self, i))
 
     def find_headers(self, footer_mode = False):
@@ -143,7 +179,7 @@ class Document(object):
         Returns: TODO
 
         """
-        print "Found page numbers: %s" % self.found_pagenumbers
+        print("Found page numbers: %s" % self.found_pagenumbers)
         start, val = next((i, val) for i, val in enumerate(self.found_pagenumbers) if val is not None)
         self.expected_pagenumbers = range(val-start, val + len(self.found_pagenumbers) - start)
         for i, page in enumerate(self.page_list):
@@ -245,9 +281,36 @@ class Document(object):
         """
         pass
 
+    def ocr(self, cleanup = True):
+        """
+        Run OCR on the document.
+        Returns: 0 if all pages successful, else 1
+
+        """
+        check = True
+        for i in range(1,self.number_of_pages + 1):
+            pagecheck, _, _ = call("gs -dFirstPage=%(page)s -dLastPage=%(page)s -dBATCH -dNOPAUSE -sDEVICE=png16m -dGraphicsAlphaBits=4 -dTextAlphaBits=4 -r600 -sOutputFile='ocr_tmp/page-%(page)d.png' '%(input)s'" % {"page" : i, "input": self.pdf_path})
+            tesscheck, _, _ = call("tesseract ocr_tmp/page-%(page)s.png ocr/page_%(page)s -l eng --psm 1 --oem 2 txt hocr" % {"page" : i})
+            if tesscheck == 0:
+                self.page_files.append(os.getcwd() + "/ocr/page_%(page)s.txt" %{"page" : i})
+            check = check and pagecheck and tesscheck
+        return check
 
 def main():
-    document = Document(page_files = glob.glob("%s/output/TASK*/out/*.clean.txt" % sys.argv[1]))
+    # ASSUME: This is going to be run _within_ the docker container that has gs, tesseract, etc installed
+    document = Document(pdf_path = "/home/input/1-s2.0-0031018280900164-main.pdf")
+
+
+    # TODO: parse options
+    # TODO: run only those options
+
+    document.ocr()
+    document.prep_pagefiles()
+
+
+    import pdb; pdb.set_trace()
+
+
 
     # cleanup headers/footers
     document.find_headers(footer_mode = True)
@@ -258,13 +321,23 @@ def main():
     document.mid_page_cleanup() # keys in on blank lines, so needs to be _before_ remove_empties
     document.remove_empties()
 
+
+
+    # TODO: incorporate the desired subset of the datamunging cleanup/spellchecker stuff
+
+    document.text = ""
     for i, filename in enumerate(document.page_files):
         # TODO: one more pass? Clean up cases of \n<HEADER>\n to get 'first column'
         # TODO and clean up \n\n\n\n\n type stuff..
-        new_filename = filename.replace("clean.txt", "moreclean.txt")
-        with open(new_filename, "w") as fout:
+        new_filename = filename.replace(".txt", "_clean.txt")
+        with codecs.open(new_filename, "w", "utf-8") as fout:
             document.page_list[i].page[-1] += "\n"
             fout.write("\n".join(document.page_list[i].page))
+            document.text += "\n".join(document.page_list[i].page)
+        # concatenate page text into one dump
+        with codecs.open("ocr/document_clean.txt", "w", "utf-8") as fout:
+            fout.write(document.text)
+
 
 
 if __name__ == '__main__':

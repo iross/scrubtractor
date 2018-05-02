@@ -18,6 +18,7 @@ import re
 import sys
 import shutil
 import os
+from os import path
 import datetime
 import subprocess
 import codecs
@@ -55,11 +56,23 @@ class Document(object):
         else:
             self.page_files = []
 
-        self.repeated_phrases = set()
+        if not hasattr(self, "working_dir"):
+            self.working_dir = "./"
 
-        shutil.rmtree('ocr_tmp', True)
+        self.repeated_phrases = set()
+        if not self.working_dir.endswith("/"):
+            self.working_dir += "/"
+
+        self.working_dir = "output/%s" % self.working_dir
+        shutil.rmtree(self.working_dir + 'ocr_tmp', True)
+        shutil.rmtree(self.working_dir + 'ocr', True)
         try:
-            os.mkdir('ocr_tmp')
+            if not path.exists(self.working_dir):
+                os.mkdir(self.working_dir)
+            if not path.exists(self.working_dir + 'ocr_tmp'):
+                os.mkdir(self.working_dir + 'ocr_tmp')
+            if not path.exists(self.working_dir + 'ocr'):
+                os.mkdir(self.working_dir + 'ocr')
         except OSError as e:
             print("ERROR\tCreate ocr_tmp folder")
             raise e
@@ -289,54 +302,50 @@ class Document(object):
         """
         check = True
         for i in range(1,self.number_of_pages + 1):
-            pagecheck, _, _ = call("gs -dFirstPage=%(page)s -dLastPage=%(page)s -dBATCH -dNOPAUSE -sDEVICE=png16m -dGraphicsAlphaBits=4 -dTextAlphaBits=4 -r600 -sOutputFile='ocr_tmp/page-%(page)d.png' '%(input)s'" % {"page" : i, "input": self.pdf_path})
-            tesscheck, _, _ = call("tesseract ocr_tmp/page-%(page)s.png ocr/page_%(page)s -l eng --psm 1 --oem 2 txt hocr" % {"page" : i})
+            pagecheck, _, _ = call("gs -dFirstPage=%(page)s -dLastPage=%(page)s -dBATCH -dNOPAUSE -sDEVICE=png16m -dGraphicsAlphaBits=4 -dTextAlphaBits=4 -r600 -sOutputFile='%(working_dir)s/ocr_tmp/page-%(page)d.png' '%(input)s'" % {"working_dir" : self.working_dir, "page" : i, "input": self.pdf_path})
+            tesscheck, _, _ = call("tesseract %(working_dir)s/ocr_tmp/page-%(page)s.png %(working_dir)s/ocr/page_%(page)s -l eng --psm 1 --oem 2 txt hocr" % {"working_dir" : self.working_dir,  "page" : i})
             if tesscheck == 0:
-                self.page_files.append(os.getcwd() + "/ocr/page_%(page)s.txt" %{"page" : i})
+                self.page_files.append(self.working_dir + "/ocr/page_%(page)s.txt" %{"page" : i})
             check = check and pagecheck and tesscheck
         return check
 
 def main():
     # ASSUME: This is going to be run _within_ the docker container that has gs, tesseract, etc installed
-    document = Document(pdf_path = "/home/input/1-s2.0-0031018280900164-main.pdf")
+    for document_path in glob.glob("./input/*.pdf"):
+        document = Document(pdf_path = document_path, working_dir = path.basename(document_path).replace(".pdf", ""))
+
+        # TODO: parse options
+        # TODO: run only those options
+
+        document.ocr()
+        document.prep_pagefiles()
 
 
-    # TODO: parse options
-    # TODO: run only those options
-
-    document.ocr()
-    document.prep_pagefiles()
-
-
-    import pdb; pdb.set_trace()
-
-
-
-    # cleanup headers/footers
-    document.find_headers(footer_mode = True)
-    document.find_headers(footer_mode = False)
-    document.predict_pagenumbers() # requires found_pagenumbers, so should be after the find_headers calls
-    document.remove_headers(mode = "footer")
-    document.remove_headers(mode = "header")
-    document.mid_page_cleanup() # keys in on blank lines, so needs to be _before_ remove_empties
-    document.remove_empties()
+        # cleanup headers/footers
+        document.find_headers(footer_mode = True)
+        document.find_headers(footer_mode = False)
+        document.predict_pagenumbers() # requires found_pagenumbers, so should be after the find_headers calls
+        document.remove_headers(mode = "footer")
+        document.remove_headers(mode = "header")
+        document.mid_page_cleanup() # keys in on blank lines, so needs to be _before_ remove_empties
+        document.remove_empties()
 
 
 
-    # TODO: incorporate the desired subset of the datamunging cleanup/spellchecker stuff
+        # TODO: incorporate the desired subset of the datamunging cleanup/spellchecker stuff
 
-    document.text = ""
-    for i, filename in enumerate(document.page_files):
-        # TODO: one more pass? Clean up cases of \n<HEADER>\n to get 'first column'
-        # TODO and clean up \n\n\n\n\n type stuff..
-        new_filename = filename.replace(".txt", "_clean.txt")
-        with codecs.open(new_filename, "w", "utf-8") as fout:
-            document.page_list[i].page[-1] += "\n"
-            fout.write("\n".join(document.page_list[i].page))
-            document.text += "\n".join(document.page_list[i].page)
-        # concatenate page text into one dump
-        with codecs.open("ocr/document_clean.txt", "w", "utf-8") as fout:
-            fout.write(document.text)
+        document.text = ""
+        for i, filename in enumerate(document.page_files):
+            # TODO: one more pass? Clean up cases of \n<HEADER>\n to get 'first column'
+            # TODO and clean up \n\n\n\n\n type stuff..
+            new_filename = filename.replace(".txt", "_clean.txt")
+            with codecs.open(new_filename, "w", "utf-8") as fout:
+                document.page_list[i].page[-1] += "\n"
+                fout.write("\n".join(document.page_list[i].page))
+                document.text += "\n".join(document.page_list[i].page)
+            # concatenate page text into one dump
+            with codecs.open(document.working_dir + "ocr/document_clean.txt", "w", "utf-8") as fout:
+                fout.write(document.text)
 
 
 

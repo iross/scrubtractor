@@ -19,3 +19,6 @@ ADD input/1-s2.0-0031018280900164-main.pdf /home/input
 #ADD ocr /home/work/ocr
 
 WORKDIR /home/work
+
+ENTRYPOINT ["python3"]
+CMD ["Document.py"]

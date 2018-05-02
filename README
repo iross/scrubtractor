@@ -1,5 +1,5 @@
 ```
-docker stop scrub; docker build --rm=true -t scrubtractor .; docker run -v $(pwd)/input:/home/work/input -v $(pwd)/output:/home/work/output --rm --name scrub -dt scrubtractor; docker exec -it scrub /bin/bash
+docker stop scrub; docker build --rm=true -t scrubtractor .; docker run -v $(pwd)/input:/home/work/input -v $(pwd)/output:/home/work/output --rm --name scrub -dt scrubtractor;
 
 
 # inside container

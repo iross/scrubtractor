@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+# encoding: utf-8
+
 """
 Document.py
 "Document" class modules for GeoDeepDive.
@@ -63,7 +66,7 @@ class Document(object):
         if not self.working_dir.endswith("/"):
             self.working_dir += "/"
 
-        self.working_dir = "output/%s" % self.working_dir
+        self.working_dir = "/output/%s" % self.working_dir
         shutil.rmtree(self.working_dir + 'ocr_tmp', True)
         shutil.rmtree(self.working_dir + 'ocr', True)
         try:
@@ -77,6 +80,9 @@ class Document(object):
             print("ERROR\tCreate ocr_tmp folder")
             raise e
 
+    def __del__(self):
+        # cleanup, etc
+        shutil.rmtree(self.working_dir + 'ocr_tmp', True)
 
     def prep_pagefiles(self):
         self.page_files = sorted(self.page_files, key=lambda s: [int(t) if t.isdigit() else t.lower() for t in re.split('(\d+)', s)])
@@ -311,7 +317,12 @@ class Document(object):
 
 def main():
     # ASSUME: This is going to be run _within_ the docker container that has gs, tesseract, etc installed
-    for document_path in glob.glob("./input/*.pdf"):
+    if len(sys.argv) == 1:
+        input_dir = os.getcwd() + "/input/"
+    else:
+        input_dir = path.abspath(sys.argv[1])
+    print("Looking for PDFs in %s" % input_dir)
+    for document_path in glob.glob(input_dir +"/*.pdf"):
         document = Document(pdf_path = document_path, working_dir = path.basename(document_path).replace(".pdf", ""))
 
         # TODO: parse options

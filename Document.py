@@ -19,6 +19,7 @@ from difflib import SequenceMatcher
 import glob
 import re
 import sys
+import signal
 import shutil
 import os
 from os import path

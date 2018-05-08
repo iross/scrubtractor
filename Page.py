@@ -122,9 +122,9 @@ class Page(object):
         if mode not in valid_modes:
             print("Invalid scan mode supplied! Choose one of (%s)" % (valid_modes))
         if mode == "header":
-            lines = range(LINES)
+            lines = range(max(LINES, len(self.page)))
         elif mode == "footer":
-            lines = range(len(self.page) - 1 - LINES, len(self.page))
+            lines = range(max(0, len(self.page) - 1 - LINES), len(self.page))
         elif mode == "full_page":
             lines = range(1, len(self.page)-1)
 

@@ -200,14 +200,15 @@ class Document(object):
 
         """
         print("Found page numbers: %s" % self.found_pagenumbers)
-        start, val = next((i, val) for i, val in enumerate(self.found_pagenumbers) if val is not None)
-        self.expected_pagenumbers = range(val-start, val + len(self.found_pagenumbers) - start)
-        for i, page in enumerate(self.page_list):
-            self.page_list[i].expected_page_no = self.expected_pagenumbers[i]
+        if all(i is None for i in self.found_pagenumbers):
+            for i, page in enumerate(self.page_list):
+                self.page_list[i].expected_page_no = None
 
-        # get first and last non-zero
-        pass
-
+        else:
+            start, val = next((i, val) for i, val in enumerate(self.found_pagenumbers) if val is not None)
+            self.expected_pagenumbers = range(val-start, val + len(self.found_pagenumbers) - start)
+            for i, page in enumerate(self.page_list):
+                self.page_list[i].expected_page_no = self.expected_pagenumbers[i]
 
     # TODO: why do I need to pass in found_headers and found_pagenumbers
     ## they're accessible (but slightly different) in self.repeated

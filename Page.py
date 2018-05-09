@@ -122,7 +122,7 @@ class Page(object):
         if mode not in valid_modes:
             print("Invalid scan mode supplied! Choose one of (%s)" % (valid_modes))
         if mode == "header":
-            lines = range(max(LINES, len(self.page)))
+            lines = range(min(LINES, len(self.page)))
         elif mode == "footer":
             lines = range(max(0, len(self.page) - 1 - LINES), len(self.page))
         elif mode == "full_page":
@@ -138,7 +138,11 @@ class Page(object):
             # loop over known headers, remove any any similar strings
             for rep in self.Document.repeated_phrases:
                 rep = str(rep)
-                seq = SequenceMatcher(None, rep, self.page[i])
+                try:
+                    seq = SequenceMatcher(None, rep, self.page[i])
+                except IndexError:
+                    print(i)
+                    import pdb; pdb.set_trace()
                 if seq.ratio() > 0.8:
                     ignore_lines.append(i)
             # remove any instance of the expected self.page number

@@ -40,25 +40,34 @@ def call(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeou
         os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
         return 1, None, None
 
+
 class Document(object):
+    """
 
-    """TODO"""
+    TODO
 
-    def __init__(self, *args, **kwargs):
+    """
+
+    def __init__(self, pdf_path = None, page_files = None, *args, **kwargs):
+        self.pdf_path = pdf_path
+        self.page_files = page_files
+
         for key, val in kwargs.items():
             setattr(self, key, val)
 
-        if hasattr(self, 'pdf_path') and self.pdf_path is not None:
+        if self.pdf_path is not None:
             code, outs, errs = call("gs -q -dNODISPLAY -c \"(%s) (r) file runpdfbegin pdfpagecount = quit\"" % self.pdf_path)
             try:
                 self.number_of_pages = int(outs)
             except ValueError as e:
                 print("ERROR\t Could not get number of pages. Possible document is not a PDF!")
 
-        if hasattr(self, "page_files"):
+        if self.page_files is not None:
             self.prep_pagefiles()
         else:
             self.page_files = []
+
+        self.expected_page_numbers = [None]*len(self.page_files)
 
         if not hasattr(self, "working_dir"):
             self.working_dir = "./"
@@ -77,16 +86,20 @@ class Document(object):
                 os.mkdir(self.working_dir + 'ocr_tmp')
             if not path.exists(self.working_dir + 'ocr'):
                 os.mkdir(self.working_dir + 'ocr')
-        except OSError as e:
-            print("ERROR\tCreate ocr_tmp folder")
-            raise e
+        except OSError as ex:
+            print("ERROR\tCould not create ocr_tmp folder")
+            raise ex
 
     def __del__(self):
         # cleanup, etc
         shutil.rmtree(self.working_dir + 'ocr_tmp', True)
 
     def prep_pagefiles(self):
-        self.page_files = sorted(self.page_files, key=lambda s: [int(t) if t.isdigit() else t.lower() for t in re.split('(\d+)', s)])
+        """
+        TODO
+        """
+        self.page_files = sorted(self.page_files,
+                key=lambda s: [int(t) if t.isdigit() else t.lower() for t in re.split('(\d+)', s)])
         self.repeated = list()
         self.found_pagenumbers = list()
         self.page_list = []
@@ -201,66 +214,14 @@ class Document(object):
         """
         print("Found page numbers: %s" % self.found_pagenumbers)
         if all(i is None for i in self.found_pagenumbers):
-            for i, page in enumerate(self.page_list):
+            for i in range(len(self.page_list)):
                 self.page_list[i].expected_page_no = None
-
         else:
             start, val = next((i, val) for i, val in enumerate(self.found_pagenumbers) if val is not None)
             self.expected_pagenumbers = range(val-start, val + len(self.found_pagenumbers) - start)
             for i, page in enumerate(self.page_list):
                 self.page_list[i].expected_page_no = self.expected_pagenumbers[i]
 
-    # TODO: why do I need to pass in found_headers and found_pagenumbers
-    ## they're accessible (but slightly different) in self.repeated
-    ## TODO: actually the Page class will be aware of what potential page number it is..
-#    def cleanup_page(self, page, mode, found_pagenumber):
-#        """
-#        TODO: Docstring for remove_headers.
-#
-#        Args:
-#            footer_mode (TODO): TODO
-#
-#        Returns: TODO
-#        """
-#
-#        LINES = 8
-#
-#        valid_modes = ["header", "footer", "full_page"]
-#        if mode not in valid_modes:
-#            print "Invalid scan mode supplied! Choose one of (%s)" % (valid_modes)
-#
-#        if mode == "header":
-#            lines = xrange(LINES)
-#        elif mode == "footer":
-#            lines = xrange(len(page) - 1 - LINES, len(page))
-#        elif mode == "full_page":
-#            lines = xrange(1, len(page)-1)
-#
-#        # remove pagenumbers based on string matching
-#        ignore_lines = []
-#        for i in lines:
-#            if mode == "full_page": # only check for similarity if the string is isolated
-#                if page[i-1] != "" or page[i+1] != "":
-#                    continue
-#
-#            # loop over known headers, remove any any similar strings
-#            for rep in self.repeated_phrases:
-#                rep = str(rep)
-#                seq = SequenceMatcher(None, rep, page[i])
-#                if seq.ratio() > 0.8:
-#                    ignore_lines.append(i)
-#            # remove any instance of the expected page number
-#            page[i] = page[i].replace(str(found_pagenumber), "")
-#
-#        cleaned_page = [val for i, val in enumerate(page) if i not in ignore_lines]
-#        non_empty_lines = [i for i, val in enumerate(cleaned_page) if (val!="" and val!="\n" and val!=' ')]
-#        if non_empty_lines == []:
-#            cleaned_page = ['']
-#        else:
-#            cleaned_page = cleaned_page[non_empty_lines[0]:non_empty_lines[-1]+1]
-#
-#        return cleaned_page
-#
     def remove_headers(self, mode):
         """
         TODO: Docstring for remove_headers.
@@ -270,11 +231,8 @@ class Document(object):
 
         Returns: TODO
         """
-
-        for page, pageno in zip(self.page_list, self.found_pagenumbers):
+        for page in self.page_list:
             page.cleanup(mode)
-#            cleaned_pages.append(page)
-#        self.page_list = cleaned_pages
 
     def mid_page_cleanup(self):
         """
@@ -282,7 +240,7 @@ class Document(object):
         Returns: TODO
 
         """
-        for j, page in enumerate(self.page_list):
+        for page in self.page_list:
             page.cleanup(mode="full_page")
 
     def remove_empties(self):

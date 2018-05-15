@@ -14,6 +14,8 @@ RUN mkdir /output
 
 ADD Document.py /usr/bin/
 ADD Page.py /usr/bin/
+ADD Volume2.py /usr/bin/
+ADD rulesets/ /usr/bin/rulesets
 
 #ENTRYPOINT ["Document.py"]
 #CMD ["--help"]

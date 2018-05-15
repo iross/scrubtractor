@@ -27,6 +27,7 @@ import datetime
 import subprocess
 import codecs
 from Page import Page
+import Volume2
 
 def call(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=300):
     proc = subprocess.Popen(cmd, stdout=stdout, stderr=stderr, shell=True, preexec_fn=os.setsid)
@@ -282,6 +283,7 @@ def main():
     else:
         input_dir = path.abspath(sys.argv[1])
     print("Looking for PDFs in %s" % input_dir)
+    Volume2.importrules("/usr/bin/rulesets/")
     for document_path in glob.glob(input_dir +"/*.pdf"):
         document = Document(pdf_path = document_path, working_dir = path.basename(document_path).replace(".pdf", ""))
 
@@ -306,17 +308,37 @@ def main():
         # TODO: incorporate the desired subset of the datamunging cleanup/spellchecker stuff
 
         document.text = ""
+        document_tokens = []
         for i, filename in enumerate(document.page_files):
             # TODO: one more pass? Clean up cases of \n<HEADER>\n to get 'first column'
             # TODO and clean up \n\n\n\n\n type stuff..
+            print(filename)
             new_filename = filename.replace(".txt", "_clean.txt")
             with codecs.open(new_filename, "w", "utf-8") as fout:
                 document.page_list[i].page[-1] += "\n"
-                fout.write("\n".join(document.page_list[i].page))
-                document.text += "\n".join(document.page_list[i].page)
-            # concatenate page text into one dump
-            with codecs.open(document.working_dir + "ocr/document_clean.txt", "w", "utf-8") as fout:
-                fout.write(document.text)
+                page_tokens, _, _ = Volume2.as_stream(document.page_list[i].page)
+                correct_tokens, pages, _, _ = Volume2.correct_stream(page_tokens)
+                document_tokens += correct_tokens
+                lasttoken = ""
+                for token in correct_tokens:
+                    if lasttoken == '\n' and (token == '"' or token == "'"):
+                        token = token
+                    elif token != '\n' and token != "“" and not (token.startswith('<') and token.endswith('>')):
+                        token = token + " "
+                    fout.write(token)
+                    lasttoken = token
+                    document.text += token
+        # concatenate page text into one dump
+        correct_document_tokens, pages, _, _ = Volume2.correct_stream(document_tokens)
+        with codecs.open(document.working_dir + "ocr/document_clean.txt", "w", "utf-8") as fout:
+            for token in correct_document_tokens:
+                if lasttoken == '\n' and (token == '"' or token == "'"):
+                    token = token
+                elif token != '\n' and token != "“" and not (token.startswith('<') and token.endswith('>')):
+                    token = token + " "
+                fout.write(token)
+                lasttoken = token
+                document.text += token
 
 
 

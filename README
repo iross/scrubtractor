@@ -7,3 +7,5 @@ docker stop scrub; docker build --rm=true -t scrubtractor .; docker run -v $(pwd
 python3 Document.py
 ```
 
+Large swaths stolen from and/or inspired by https://github.com/tedunderwood/DataMunging
+

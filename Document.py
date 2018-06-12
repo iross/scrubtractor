@@ -29,7 +29,10 @@ import codecs
 from Page import Page
 import Volume2
 
-def call(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=300):
+def call(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=300):
+    """
+    timeout-enable popen with stdout/stderr propagation
+    """
     proc = subprocess.Popen(cmd, stdout=stdout, stderr=stderr, shell=True, preexec_fn=os.setsid)
     try:
         outs, errs = proc.communicate(timeout=timeout)
@@ -40,7 +43,6 @@ def call(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeou
         print("\t%s" % cmd)
         os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
         return 1, None, None
-
 
 class Document(object):
     """
@@ -57,11 +59,11 @@ class Document(object):
             setattr(self, key, val)
 
         if self.pdf_path is not None:
-            code, outs, errs = call("gs -q -dNODISPLAY -c \"(%s) (r) file runpdfbegin pdfpagecount = quit\"" % self.pdf_path)
+            _, out, _ = call("gs -q -dNODISPLAY -c \"(%s) (r) file runpdfbegin pdfpagecount = quit\"" % self.pdf_path)
             try:
-                self.number_of_pages = int(outs)
+                self.number_of_pages = int(out)
             except ValueError as e:
-                print("ERROR\t Could not get number of pages. Possible document is not a PDF!")
+                print("ERROR\t Could not get number of pages. Possible document is not a PDF! Error: %s" % e)
 
         if self.page_files is not None:
             self.prep_pagefiles()
@@ -100,7 +102,7 @@ class Document(object):
         TODO
         """
         self.page_files = sorted(self.page_files,
-                key=lambda s: [int(t) if t.isdigit() else t.lower() for t in re.split('(\d+)', s)])
+                key=lambda s: [int(t) if t.isdigit() else t.lower() for t in re.split(r'(\d+)', s)])
         self.repeated = list()
         self.found_pagenumbers = list()
         self.page_list = []
@@ -109,7 +111,7 @@ class Document(object):
             self.found_pagenumbers.append(None)
             self.page_list.append(Page(page_filepath, self, i))
 
-    def find_headers(self, footer_mode = False):
+    def find_headers(self, footer_mode=False):
         '''
         Identifies repeated page headers and removes them from
         the pages; then returns the edited pagelist.
@@ -139,9 +141,8 @@ class Document(object):
         '''
 
         # For very short documents, this is not a meaningful task.
-
         if len(self.page_list) < 5:
-            return self.page_list
+            return
 
         firsttwos = list()
         potential_pagenumbers = list()
@@ -153,7 +154,6 @@ class Document(object):
         # We also package them as tuples in order to preserve information
         # that will allow us to delete the lines identified as repeats.
 
-        LINES = 8
         SIMILARITY_CUTOFF = 0.7
         for page in self.page_list:
             thesetwo, thesepagenos = page.get_firsttwo(footer_mode)
@@ -174,7 +174,7 @@ class Document(object):
 
             indexedlines = firsttwos[index]
 
-            for j in range (index - 2, index):
+            for j in range(index - 2, index):
 
                 previouslines = firsttwos[j]
 
@@ -220,7 +220,7 @@ class Document(object):
         else:
             start, val = next((i, val) for i, val in enumerate(self.found_pagenumbers) if val is not None)
             self.expected_pagenumbers = range(val-start, val + len(self.found_pagenumbers) - start)
-            for i, page in enumerate(self.page_list):
+            for i, _ in enumerate(self.page_list):
                 self.page_list[i].expected_page_no = self.expected_pagenumbers[i]
 
     def remove_headers(self, mode):
@@ -261,16 +261,16 @@ class Document(object):
         """
         pass
 
-    def ocr(self, cleanup = True):
+    def ocr(self):
         """
         Run OCR on the document.
         Returns: 0 if all pages successful, else 1
 
         """
         check = True
-        for i in range(1,self.number_of_pages + 1):
+        for i in range(1, self.number_of_pages + 1):
             pagecheck, _, _ = call("gs -dFirstPage=%(page)s -dLastPage=%(page)s -dBATCH -dNOPAUSE -sDEVICE=png16m -dGraphicsAlphaBits=4 -dTextAlphaBits=4 -r600 -sOutputFile='%(working_dir)s/ocr_tmp/page-%(page)d.png' '%(input)s'" % {"working_dir" : self.working_dir, "page" : i, "input": self.pdf_path})
-            tesscheck, _, _ = call("tesseract %(working_dir)s/ocr_tmp/page-%(page)s.png %(working_dir)s/ocr/page_%(page)s -l eng --psm 1 --oem 2 txt hocr" % {"working_dir" : self.working_dir,  "page" : i})
+            tesscheck, _, _ = call("tesseract %(working_dir)s/ocr_tmp/page-%(page)s.png %(working_dir)s/ocr/page_%(page)s -l eng --psm 1 --oem 2 txt hocr" % {"working_dir" : self.working_dir, "page" : i})
             if tesscheck == 0:
                 self.page_files.append(self.working_dir + "/ocr/page_%(page)s.txt" %{"page" : i})
             check = check and pagecheck and tesscheck
@@ -285,7 +285,7 @@ def main():
     print("Looking for PDFs in %s" % input_dir)
     Volume2.importrules("/usr/bin/rulesets/")
     for document_path in glob.glob(input_dir +"/*.pdf"):
-        document = Document(pdf_path = document_path, working_dir = path.basename(document_path).replace(".pdf", ""))
+        document = Document(pdf_path=document_path, working_dir=path.basename(document_path).replace(".pdf", ""))
 
         # TODO: parse options
         # TODO: run only those options
@@ -295,11 +295,11 @@ def main():
 
 
         # cleanup headers/footers
-        document.find_headers(footer_mode = True)
-        document.find_headers(footer_mode = False)
+        document.find_headers(footer_mode=True)
+        document.find_headers(footer_mode=False)
         document.predict_pagenumbers() # requires found_pagenumbers, so should be after the find_headers calls
-        document.remove_headers(mode = "footer")
-        document.remove_headers(mode = "header")
+        document.remove_headers(mode="footer")
+        document.remove_headers(mode="header")
         document.mid_page_cleanup() # keys in on blank lines, so needs to be _before_ remove_empties
         document.remove_empties()
 
@@ -317,7 +317,7 @@ def main():
             with codecs.open(new_filename, "w", "utf-8") as fout:
                 document.page_list[i].page[-1] += "\n"
                 page_tokens, _, _ = Volume2.as_stream(document.page_list[i].page)
-                correct_tokens, pages, _, _ = Volume2.correct_stream(page_tokens)
+                correct_tokens, _, _, _ = Volume2.correct_stream(page_tokens)
                 document_tokens += correct_tokens
                 lasttoken = ""
                 for token in correct_tokens:
@@ -329,7 +329,7 @@ def main():
                     lasttoken = token
                     document.text += token
         # concatenate page text into one dump
-        correct_document_tokens, pages, _, _ = Volume2.correct_stream(document_tokens)
+        correct_document_tokens, _, _, _ = Volume2.correct_stream(document_tokens)
         with codecs.open(document.working_dir + "ocr/document_clean.txt", "w", "utf-8") as fout:
             for token in correct_document_tokens:
                 if lasttoken == '\n' and (token == '"' or token == "'"):

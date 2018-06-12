@@ -36,7 +36,7 @@ class Page(object):
         with codecs.open(self.filepath["txt"], 'r', 'utf-8') as fin:
             clean_page = []
             temp_page = fin.read().split("\n")
-            non_empty_lines = [i for i, val in enumerate(temp_page) if (val!="" and val!="\n")]
+            non_empty_lines = [i for i, val in enumerate(temp_page) if (val != "" and val != "\n")]
             if non_empty_lines == []:
                 clean_page = ['']
             else:
@@ -49,8 +49,8 @@ class Page(object):
         self.page_index = page_index
 
         # get stuff from the Document and store it locally just because it's easier that way.
-#        self.expected_page_no = self.Document.expected_pagenumbers[self.page_index]
-#        self.found_page_no = self.Document.expected_pagenumbers[self.page_index]
+        self.expected_page_no = self.Document.expected_pagenumbers[self.page_index]
+        self.found_page_no = self.Document.expected_pagenumbers[self.page_index]
 
     def get_firsttwo(self, footer_mode):
         """
@@ -142,14 +142,13 @@ class Page(object):
                     seq = SequenceMatcher(None, rep, self.page[i])
                 except IndexError:
                     print(i)
-                    import pdb; pdb.set_trace()
                 if seq.ratio() > 0.8:
                     ignore_lines.append(i)
             # remove any instance of the expected self.page number
             self.page[i] = self.page[i].replace(str(self.expected_page_no), "")
 
         cleaned_page = [val for i, val in enumerate(self.page) if i not in ignore_lines]
-        non_empty_lines = [i for i, val in enumerate(cleaned_page) if (re.match(r"^\s?$", val) is None)]
+        non_empty_lines = [i for i, val in enumerate(cleaned_page) if re.match(r"^\s?$", val) is None]
         if non_empty_lines == []:
             cleaned_page = ['']
         else:
